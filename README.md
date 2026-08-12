@@ -2,6 +2,18 @@
 
 MeshCore is a lightweight, portable C++ library that enables multi-hop packet routing for embedded projects using LoRa and other packet radios. It is designed for developers who want to create resilient, decentralized communication networks that work without the internet.
 
+## About this fork
+
+This is the **BKWSU-UK** fork (`bkwsu-custom` branch). It contains experimental/custom changes on top of the upstream MeshCore project, primarily focused on GPS power management for solar-powered Room Server nodes such as the Seeed SenseCAP Solar Node P1-Pro.
+
+Key differences from upstream:
+
+- **GPS sleep / interval power management** — adds a `gps_sleep_during_interval` flag and `gps_interval` setting. When enabled, the GPS module is powered down between fixes, wakes at the configured interval, attempts a fix for up to 10 minutes, updates the RTC, and powers down again. This preserves battery on solar nodes while still keeping the clock in sync.
+- **Enhanced GPS status reporting** — the `gps` command now reports `off`, `sleeping`, `on (active)`, or `on (acquiring)`, together with the interval and the number of seconds until the next wake. New CLI commands: `get gps.state`, `get gps.next`, `get gps.interval`, `get gps.sleep`.
+- **Clock sync handling improvements** — fixes issues when the device clock is ahead of real time and corrects contact timestamps in that case.
+
+For usage details, see the [CLI command reference](./docs/cli_commands.md).
+
 ## 🔍 What is MeshCore?
 
 MeshCore now supports a range of LoRa devices, allowing for easy flashing without the need to compile firmware manually. Users can flash a pre-built binary using tools like Adafruit ESPTool and interact with the network through a serial console.

@@ -989,8 +989,57 @@ region save
 **Default:** `off`
 
 **Note:** Output format:
-- `off` when the GPS hardware is disabled
-- `on, {active|deactivated}, {fix|no fix}, {sat count} sats` when the GPS hardware is enabled
+- `off, interval {interval}s` when the GPS is disabled
+- `sleeping, interval {interval}s, next in {seconds}s` when the GPS is between fixes and will wake automatically
+- `on ({active|acquiring}), {fix|no fix}, {sat count} sats` when the GPS hardware is powered on
+
+These settings are also exposed as sensor keys: `gps`, `gps_interval`, `gps_sleep`, `gps_state`, `gps_next`.
+
+---
+
+#### View or change the GPS fix interval
+**Usage:**
+- `get gps.interval`
+- `set gps.interval <seconds>`
+
+**Parameters:**
+- `seconds`: seconds between fix attempts, `0` to disable automatic sleep/wake (max 86400)
+
+**Default:** `0`
+
+---
+
+#### View or change whether the GPS sleeps between fixes
+**Usage:**
+- `get gps.sleep`
+- `set gps.sleep <state>`
+
+**Parameters:**
+- `state`: `on`|`off`
+
+**Default:** `off`
+
+**Note:** When enabled, the GPS is powered off between `gps.interval` fix attempts. It wakes at the end of each interval, tries for a fix for up to 10 minutes, updates the clock, then powers off again. The clock is still updated even if `gps` is `off` (unless sleep is also `off`).
+
+---
+
+#### View the current GPS state
+**Usage:**
+- `get gps.state`
+
+**Output:**
+- `off`
+- `active`
+- `acquiring`
+- `sleeping`
+
+---
+
+#### View time until next GPS action
+**Usage:**
+- `get gps.next`
+
+**Output:** seconds until the GPS next wakes or re-checks
 
 ---
 
