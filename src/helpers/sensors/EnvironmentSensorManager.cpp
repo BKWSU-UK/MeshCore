@@ -667,7 +667,7 @@ bool EnvironmentSensorManager::begin() {
 bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, CayenneLPP& telemetry) {
   next_available_channel = TELEM_CHANNEL_SELF + 1;
 
-  if (requester_permissions & TELEM_PERM_LOCATION && gps_active) {
+  if (requester_permissions & TELEM_PERM_LOCATION && gps_active && gps_loc_enabled) {
     telemetry.addGPS(TELEM_CHANNEL_SELF, node_lat, node_lon, node_altitude);
   }
 
@@ -683,29 +683,32 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
 
 
 int EnvironmentSensorManager::getNumSettings() const {
-  int settings = 0;
   #if ENV_INCLUDE_GPS
-    if (gps_detected) settings++;  // only show GPS setting if GPS is detected
+    if (gps_detected) return 3;  // gps, gps_interval, gps_sleep
   #endif
-  return settings;
+  return 0;
 }
 
 const char* EnvironmentSensorManager::getSettingName(int i) const {
-  int settings = 0;
   #if ENV_INCLUDE_GPS
-    if (gps_detected && i == settings++) {
-      return "gps";
-    }
+    if (!gps_detected) return NULL;
+    if (i == 0) return "gps";
+    if (i == 1) return "gps_interval";
+    if (i == 2) return "gps_sleep";
   #endif
   return NULL;
 }
 
 const char* EnvironmentSensorManager::getSettingValue(int i) const {
-  int settings = 0;
   #if ENV_INCLUDE_GPS
-    if (gps_detected && i == settings++) {
-      return gps_active ? "1" : "0";
+    if (!gps_detected) return NULL;
+    if (i == 0) return gps_active ? "1" : "0";
+    if (i == 1) {
+      static char interval_buf[12];
+      itoa(gps_update_interval_sec, interval_buf, 10);
+      return interval_buf;
     }
+    if (i == 2) return gps_sleep_during_interval ? "1" : "0";
   #endif
   return NULL;
 }
@@ -714,15 +717,43 @@ bool EnvironmentSensorManager::setSettingValue(const char* name, const char* val
   #if ENV_INCLUDE_GPS
   if (gps_detected && strcmp(name, "gps") == 0) {
     if (strcmp(value, "0") == 0) {
+      gps_loc_enabled = false;
       stop_gps();
     } else {
       start_gps();
+      gps_loc_enabled = true;
+      if (gps_sleep_during_interval && gps_update_interval_sec > 0) {
+        in_fix_window = true;
+        gps_fix_timeout = millis() + (GPS_MAX_FIX_WAIT_SECONDS * 1000UL);
+        next_gps_action = millis() + 1000;
+      } else {
+        in_fix_window = false;
+        next_gps_action = millis();  // read immediately in continuous mode
+      }
     }
     return true;
   }
   if (strcmp(name, "gps_interval") == 0) {
-    uint32_t interval_seconds = atoi(value);
-    gps_update_interval_sec = interval_seconds > 0 ? interval_seconds : 1;
+    gps_update_interval_sec = (uint32_t) atoi(value);
+    if (gps_active && !in_fix_window && gps_sleep_during_interval && gps_update_interval_sec > 0) {
+      // entering sleep mode; treat the current on-cycle as a fix window
+      in_fix_window = true;
+      gps_fix_timeout = millis() + (GPS_MAX_FIX_WAIT_SECONDS * 1000UL);
+      next_gps_action = millis() + 1000;
+    } else if (!gps_active && !in_fix_window && gps_sleep_during_interval && gps_update_interval_sec > 0) {
+      next_gps_action = millis() + (gps_update_interval_sec * 1000UL);
+    }
+    return true;
+  }
+  if (strcmp(name, "gps_sleep") == 0) {
+    gps_sleep_during_interval = (strcmp(value, "0") != 0);
+    if (gps_active && !in_fix_window && gps_sleep_during_interval && gps_update_interval_sec > 0) {
+      in_fix_window = true;
+      gps_fix_timeout = millis() + (GPS_MAX_FIX_WAIT_SECONDS * 1000UL);
+      next_gps_action = millis() + 1000;
+    } else if (!gps_active && !in_fix_window && gps_sleep_during_interval && gps_update_interval_sec > 0) {
+      next_gps_action = millis() + (_gpsTickSec() * 1000UL);
+    }
     return true;
   }
   #endif
@@ -870,6 +901,7 @@ void EnvironmentSensorManager::start_gps() {
 
   _location->begin();
   _location->reset();
+  _location->syncTime();  // force an RTC update on the next fix
 
 #ifndef PIN_GPS_EN
   MESH_DEBUG_PRINTLN("Start GPS is N/A on this board. Actual GPS state unchanged");
@@ -878,6 +910,7 @@ void EnvironmentSensorManager::start_gps() {
 
 void EnvironmentSensorManager::stop_gps() {
   gps_active = false;
+  in_fix_window = false;
   #ifdef RAK_WISBLOCK_GPS
     pinMode(gpsResetPin, OUTPUT);
     digitalWrite(gpsResetPin, LOW);
@@ -886,9 +919,13 @@ void EnvironmentSensorManager::stop_gps() {
 
   _location->stop();
 
-  #ifndef PIN_GPS_EN
+  if (gps_sleep_during_interval && gps_update_interval_sec > 0) {
+    next_gps_action = millis() + (gps_update_interval_sec * 1000UL);
+  }
+
+#ifndef PIN_GPS_EN
   MESH_DEBUG_PRINTLN("Stop GPS is N/A on this board. Actual GPS state unchanged");
-  #endif
+#endif
 }
 #endif // ENV_INCLUDE_GPS
 
@@ -896,32 +933,71 @@ void EnvironmentSensorManager::stop_gps() {
 void EnvironmentSensorManager::loop() {
 
   #if ENV_INCLUDE_GPS
-  static unsigned long next_gps_update = 0;
   if (gps_active) {
     _location->loop();
   }
-  if ((long)(millis() - next_gps_update) > 0) {
 
-    if(gps_active){
-    #ifdef RAK_WISBLOCK_GPS
-    if ((i2cGPSFlag || serialGPSFlag) && _location->isValid()) {
-      node_lat = ((double)_location->getLatitude())/1000000.;
-      node_lon = ((double)_location->getLongitude())/1000000.;
-      MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
-      node_altitude = ((double)_location->getAltitude()) / 1000.0;
-      MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+  if ((long)(millis() - next_gps_action) > 0) {
+    if (gps_active) {
+      if (in_fix_window) {
+        // Sleep mode: powered on and waiting for a fix
+        if (_location->isValid()) {
+          if (gps_loc_enabled) {
+            #ifdef RAK_WISBLOCK_GPS
+            if (i2cGPSFlag || serialGPSFlag) {
+              node_lat = ((double)_location->getLatitude())/1000000.;
+              node_lon = ((double)_location->getLongitude())/1000000.;
+              MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
+              node_altitude = ((double)_location->getAltitude()) / 1000.0;
+              MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+            }
+            #else
+            node_lat = ((double)_location->getLatitude())/1000000.;
+            node_lon = ((double)_location->getLongitude())/1000000.;
+            MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
+            node_altitude = ((double)_location->getAltitude()) / 1000.0;
+            MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+            #endif
+          }
+          stop_gps();
+        } else if ((long)(millis() - gps_fix_timeout) > 0) {
+          MESH_DEBUG_PRINTLN("GPS fix timeout");
+          stop_gps();
+        } else {
+          next_gps_action = millis() + 1000;
+        }
+      } else {
+        // Continuous mode: read at interval while GPS stays on
+        if (gps_loc_enabled && _location->isValid()) {
+          #ifdef RAK_WISBLOCK_GPS
+          if (i2cGPSFlag || serialGPSFlag) {
+            node_lat = ((double)_location->getLatitude())/1000000.;
+            node_lon = ((double)_location->getLongitude())/1000000.;
+            MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
+            node_altitude = ((double)_location->getAltitude()) / 1000.0;
+            MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+          }
+          #else
+          node_lat = ((double)_location->getLatitude())/1000000.;
+          node_lon = ((double)_location->getLongitude())/1000000.;
+          MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
+          node_altitude = ((double)_location->getAltitude()) / 1000.0;
+          MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
+          #endif
+        }
+        next_gps_action = millis() + (_gpsTickSec() * 1000UL);
+      }
+    } else {
+      // GPS is off
+      if (gps_detected && gps_sleep_during_interval && gps_update_interval_sec > 0) {
+        start_gps();
+        in_fix_window = true;
+        gps_fix_timeout = millis() + (GPS_MAX_FIX_WAIT_SECONDS * 1000UL);
+        next_gps_action = millis() + 1000;
+      } else {
+        next_gps_action = millis() + 1000;
+      }
     }
-    #else
-    if (_location->isValid()) {
-      node_lat = ((double)_location->getLatitude())/1000000.;
-      node_lon = ((double)_location->getLongitude())/1000000.;
-      MESH_DEBUG_PRINTLN("lat %f lon %f", node_lat, node_lon);
-      node_altitude = ((double)_location->getAltitude()) / 1000.0;
-      MESH_DEBUG_PRINTLN("lat %f lon %f alt %f", node_lat, node_lon, node_altitude);
-    }
-    #endif
-    }
-    next_gps_update = millis() + (gps_update_interval_sec * 1000);
   }
   #endif
   #if ENV_INCLUDE_BME680_BSEC

@@ -59,6 +59,7 @@ public:
   // Gps settings
   uint8_t gps_enabled = 0;
   uint32_t gps_interval = 0; // in seconds
+  uint8_t gps_sleep_during_interval = 0; // sleep GPS between fixes
   uint8_t advert_loc_policy = 0;
   uint32_t discovery_mod_timestamp = 0;
   float adc_multiplier = 0;
@@ -122,6 +123,7 @@ private:
     void structure() override {
       def("en", _parent->gps_enabled); // boolean
       def("int", _parent->gps_interval);   // interval in seconds
+      def("sleep", _parent->gps_sleep_during_interval); // sleep between fixes
       def("adv_loc", _parent->advert_loc_policy);
     }
   public:

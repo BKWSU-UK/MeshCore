@@ -239,6 +239,13 @@ void DataStore::loadPrefsInt(const char *filename, NodePrefs& _prefs) {
     file.read((uint8_t *)_prefs.default_scope_name, sizeof(_prefs.default_scope_name));    // 90
     file.read((uint8_t *)_prefs.default_scope_key, sizeof(_prefs.default_scope_key));     // 121
 
+    // New fields added after v1.17.0; guard so old /new_prefs files still load
+    if (file.available() >= (int)sizeof(_prefs.gps_sleep_during_interval)) {
+      file.read((uint8_t *)&_prefs.gps_sleep_during_interval, sizeof(_prefs.gps_sleep_during_interval));
+    } else {
+      _prefs.gps_sleep_during_interval = 0;
+    }
+
     // migrate old fields
     _prefs.setRepeatEn(_prefs._client_repeat != 0);
 
