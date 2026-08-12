@@ -19,9 +19,18 @@ protected:
   int          _active_sensor_count = 0;
   uint8_t      next_available_channel = TELEM_CHANNEL_SELF + 1;
 
+  static const uint32_t GPS_MAX_FIX_WAIT_SECONDS = 600;  // 10 minutes
+
   bool     gps_detected = false;
   bool     gps_active = false;
-  uint32_t gps_update_interval_sec = 1;
+  bool     gps_loc_enabled = false;     // maps from gps_enabled; gates lat/lon copy
+  bool     gps_sleep_during_interval = false;
+  bool     in_fix_window = false;
+  uint32_t gps_update_interval_sec = 1; // raw user value (0 disables sleep cycle)
+  unsigned long next_gps_action = 0;
+  unsigned long gps_fix_timeout = 0;
+
+  uint32_t _gpsTickSec() const { return gps_update_interval_sec > 0 ? gps_update_interval_sec : 1; }
 
   #if ENV_INCLUDE_GPS
   LocationProvider* _location;
