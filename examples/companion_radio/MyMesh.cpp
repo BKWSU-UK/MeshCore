@@ -885,6 +885,7 @@ MyMesh::MyMesh(mesh::Radio &radio, mesh::RNG &rng, mesh::RTCClock &rtc, SimpleMe
   _prefs.tx_power_dbm = LORA_TX_POWER;
   _prefs.gps_enabled = 0;       // GPS disabled by default
   _prefs.gps_interval = 0;      // No automatic GPS updates by default
+  _prefs.gps_sleep_during_interval = 0; // GPS stays on when enabled
   //_prefs.rx_delay_base = 10.0f;  enable once new algo fixed
   _prefs.setRepeatEn(false);
 #if defined(USE_SX1262) || defined(USE_SX1268)
@@ -945,6 +946,7 @@ void MyMesh::begin(bool has_display) {
   _prefs.tx_power_dbm = constrain(_prefs.tx_power_dbm, -9, MAX_LORA_TX_POWER);
   _prefs.gps_enabled = constrain(_prefs.gps_enabled, 0, 1);  // Ensure boolean 0 or 1
   _prefs.gps_interval = constrain(_prefs.gps_interval, 0, 86400);  // Max 24 hours
+  _prefs.gps_sleep_during_interval = constrain(_prefs.gps_sleep_during_interval, 0, 1);  // boolean
 
 #ifdef BLE_PIN_CODE // 123456 by default
   if (_prefs.ble_pin == 0) {
@@ -1835,6 +1837,9 @@ void MyMesh::handleCmdFrame(size_t len) {
         } else if (strcmp(sp, "gps_interval") == 0) {
           uint32_t interval_seconds = atoi(np);
           _prefs.gps_interval = constrain(interval_seconds, 0, 86400);
+          savePrefs();
+        } else if (strcmp(sp, "gps_sleep") == 0) {
+          _prefs.gps_sleep_during_interval = (np[0] == '1') ? 1 : 0;
           savePrefs();
         }
         #endif

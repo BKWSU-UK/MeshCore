@@ -102,7 +102,13 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {  // Legacy 
     file.read((uint8_t *)&_prefs->flood_max_advert, sizeof(_prefs->flood_max_advert));             // 292
     file.read((uint8_t *)&_prefs->radio_fem_rxgain, sizeof(_prefs->radio_fem_rxgain));             // 293
     file.read((uint8_t *)&_prefs->cad_enabled, sizeof(_prefs->cad_enabled));                       // 294
-    // next: 295
+    // New fields added after v1.17.0; guard so old /com_prefs files still load
+    if (file.available() >= (int)sizeof(_prefs->gps_sleep_during_interval)) {
+      file.read((uint8_t *)&_prefs->gps_sleep_during_interval, sizeof(_prefs->gps_sleep_during_interval)); // 295
+    } else {
+      _prefs->gps_sleep_during_interval = 0;
+    }
+    // next: 296
 
     // sanitise bad pref values
     _prefs->rx_delay_base = constrain(_prefs->rx_delay_base, 0, 20.0f);
@@ -128,6 +134,7 @@ void CommonCLI::loadPrefsInt(FILESYSTEM* fs, const char* filename) {  // Legacy 
     _prefs->powersaving_enabled = constrain(_prefs->powersaving_enabled, 0, 1);
 
     _prefs->gps_enabled = constrain(_prefs->gps_enabled, 0, 1);
+    _prefs->gps_sleep_during_interval = constrain(_prefs->gps_sleep_during_interval, 0, 1);
     _prefs->advert_loc_policy = constrain(_prefs->advert_loc_policy, 0, 2);
 
     // sanitise settings
@@ -775,6 +782,24 @@ void CommonCLI::handleSetCmd(uint32_t sender_timestamp, char* command, char* rep
       }
     }
   #endif
+  } else if (memcmp(config, "gps.sleep ", 10) == 0) {
+    bool on = (memcmp(&config[10], "on", 2) == 0);
+    _prefs->gps_sleep_during_interval = on ? 1 : 0;
+    _sensors->setSettingValue("gps_sleep", on ? "1" : "0");
+    savePrefs();
+    strcpy(reply, "OK");
+  } else if (memcmp(config, "gps.interval ", 13) == 0) {
+    uint32_t interval = _atoi(&config[13]);
+    if (interval > 86400) {
+      strcpy(reply, "Error: max 86400 seconds");
+    } else {
+      _prefs->gps_interval = interval;
+      char buf[12];
+      itoa(interval, buf, 10);
+      _sensors->setSettingValue("gps_interval", buf);
+      savePrefs();
+      strcpy(reply, "OK");
+    }
   } else {
     strcpy(reply, "unknown config: ");
     StrHelper::strncpy(&reply[16], config, 160-17);
@@ -952,6 +977,10 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     if (tmp == reply) {
       sprintf(reply, "No extra SF configured");
     }
+  } else if (memcmp(config, "gps.sleep", 9) == 0) {
+    sprintf(reply, "> %s", _prefs->gps_sleep_during_interval ? "on" : "off");
+  } else if (memcmp(config, "gps.interval", 12) == 0) {
+    sprintf(reply, "> %d", (uint32_t)_prefs->gps_interval);
   } else {
     sprintf(reply, "??: %s", config);
   }

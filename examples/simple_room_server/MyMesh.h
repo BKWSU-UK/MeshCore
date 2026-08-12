@@ -167,7 +167,11 @@ protected:
 
 #if ENV_INCLUDE_GPS == 1
   void applyGpsPrefs() {
-    sensors.setSettingValue("gps", _prefs.gps_enabled?"1":"0");
+    char interval_str[12];
+    itoa(_prefs.gps_interval, interval_str, 10);
+    sensors.setSettingValue("gps_interval", interval_str);
+    sensors.setSettingValue("gps_sleep", _prefs.gps_sleep_during_interval ? "1" : "0");
+    sensors.setSettingValue("gps", _prefs.gps_enabled ? "1" : "0");
   }
 #endif
 
