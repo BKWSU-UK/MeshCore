@@ -952,6 +952,14 @@ bool ContactsIterator::hasNext(const BaseChatMesh* mesh, ContactInfo& dest) {
   return true;
 }
 
+void BaseChatMesh::fixBadContactTimes(uint32_t now_secs) {
+  for (int i = 0; i < num_contacts; i++) {
+    if (contacts[i].lastmod > now_secs) {
+      contacts[i].lastmod = now_secs;
+    }
+  }
+}
+
 void BaseChatMesh::loop() {
   Mesh::loop();
 
