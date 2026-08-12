@@ -180,6 +180,7 @@ public:
   bool getChannel(int idx, ChannelDetails& dest);
   bool setChannel(int idx, const ChannelDetails& src);
   int findChannelIdx(const mesh::GroupChannel& ch);
+  void fixBadContactTimes(uint32_t now_secs);
 
   void loop();
 };

@@ -1237,9 +1237,17 @@ void MyMesh::handleCmdFrame(size_t len) {
     uint32_t secs;
     memcpy(&secs, &cmd_frame[1], 4);
     uint32_t curr = getRTCClock()->getCurrentTime();
+    int32_t delta = curr - secs;
     if (secs >= curr) {
       getRTCClock()->setCurrentTime(secs);
       writeOKFrame();
+    } else if (delta > 60 * 60) {
+      MESH_DEBUG_PRINTLN("Clock ahead by %i secs", delta);
+      getRTCClock()->setCurrentTime(secs);
+      fixBadContactTimes(secs);
+      saveContacts();
+      writeOKFrame();
+      board.reboot();
     } else {
       writeErrFrame(ERR_CODE_ILLEGAL_ARG);
     }
