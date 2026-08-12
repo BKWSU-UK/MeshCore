@@ -388,17 +388,20 @@ void CommonCLI::handleCommand(uint32_t sender_timestamp, char* command, char* re
     } else if (memcmp(command, "gps", 3) == 0) {
       LocationProvider * l = _sensors->getLocationProvider();
       if (l != NULL) {
-        bool enabled = l->isEnabled(); // is EN pin on ?
-        bool fix = l->isValid();       // has fix ?
+        const char* state = _sensors->getSettingByKey("gps_state");
+        const char* interval = _sensors->getSettingByKey("gps_interval");
+        const char* next = _sensors->getSettingByKey("gps_next");
+        bool fix = l->isValid();
         int sats = l->satellitesCount();
-        bool active = !strcmp(_sensors->getSettingByKey("gps"), "1");
-        if (enabled) {
-          sprintf(reply, "on, %s, %s, %d sats",
-            active?"active":"deactivated",
-            fix?"fix":"no fix",
-            sats);
+        if (state == NULL) state = "off";
+        if (interval == NULL) interval = "0";
+        if (next == NULL) next = "0";
+        if (strcmp(state, "sleeping") == 0) {
+          sprintf(reply, "sleeping, interval %ss, next in %ss", interval, next);
+        } else if (strcmp(state, "off") == 0) {
+          sprintf(reply, "off, interval %ss", interval);
         } else {
-          strcpy(reply, "off");
+          sprintf(reply, "on (%s), %s, %d sats", state, fix ? "fix" : "no fix", sats);
         }
       } else {
         strcpy(reply, "Can't find GPS");
@@ -981,6 +984,12 @@ void CommonCLI::handleGetCmd(uint32_t sender_timestamp, char* command, char* rep
     sprintf(reply, "> %s", _prefs->gps_sleep_during_interval ? "on" : "off");
   } else if (memcmp(config, "gps.interval", 12) == 0) {
     sprintf(reply, "> %d", (uint32_t)_prefs->gps_interval);
+  } else if (memcmp(config, "gps.state", 9) == 0) {
+    const char* state = _sensors->getSettingByKey("gps_state");
+    sprintf(reply, "> %s", state ? state : "off");
+  } else if (memcmp(config, "gps.next", 8) == 0) {
+    const char* next = _sensors->getSettingByKey("gps_next");
+    sprintf(reply, "> %s", next ? next : "0");
   } else {
     sprintf(reply, "??: %s", config);
   }

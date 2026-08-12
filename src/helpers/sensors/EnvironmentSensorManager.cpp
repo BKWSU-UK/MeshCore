@@ -684,7 +684,7 @@ bool EnvironmentSensorManager::querySensors(uint8_t requester_permissions, Cayen
 
 int EnvironmentSensorManager::getNumSettings() const {
   #if ENV_INCLUDE_GPS
-    if (gps_detected) return 3;  // gps, gps_interval, gps_sleep
+    if (gps_detected) return 5;  // gps, gps_interval, gps_sleep, gps_state, gps_next
   #endif
   return 0;
 }
@@ -695,6 +695,8 @@ const char* EnvironmentSensorManager::getSettingName(int i) const {
     if (i == 0) return "gps";
     if (i == 1) return "gps_interval";
     if (i == 2) return "gps_sleep";
+    if (i == 3) return "gps_state";
+    if (i == 4) return "gps_next";
   #endif
   return NULL;
 }
@@ -709,6 +711,27 @@ const char* EnvironmentSensorManager::getSettingValue(int i) const {
       return interval_buf;
     }
     if (i == 2) return gps_sleep_during_interval ? "1" : "0";
+    if (i == 3) {
+      static char state_buf[12];
+      if (gps_active) {
+        strcpy(state_buf, in_fix_window ? "acquiring" : "active");
+      } else if (gps_sleep_during_interval && gps_update_interval_sec > 0) {
+        strcpy(state_buf, "sleeping");
+      } else {
+        strcpy(state_buf, "off");
+      }
+      return state_buf;
+    }
+    if (i == 4) {
+      static char next_buf[12];
+      if (next_gps_action == 0 || next_gps_action <= millis()) {
+        strcpy(next_buf, "0");
+      } else {
+        uint32_t secs = (uint32_t)((next_gps_action - millis()) / 1000UL);
+        itoa(secs, next_buf, 10);
+      }
+      return next_buf;
+    }
   #endif
   return NULL;
 }
